@@ -1,0 +1,8 @@
+-- Seed some example questions for the treasure hunt
+INSERT INTO questions (question_order, round_type, clue, answer, hint_1, hint_2, hint_3, max_points, hint_1_penalty, hint_2_penalty, hint_3_penalty) VALUES
+(1, 'text', 'I keep things cold but I am not outside. Open me up and find something sweet inside. Where am I?', 'fridge', 'I am in the kitchen', 'I hum quietly all day and night', 'Look for the ice cream!', 100, 20, 20, 20),
+(2, 'text', 'Under the tree I sit so bright, with ribbons and bows - what a festive sight! But look beneath where stockings hang, your next clue waits with a festive bang!', 'fireplace', 'Santa comes down here', 'It keeps you warm in winter', 'Stockings hang from here', 100, 20, 20, 20),
+(3, 'photo', 'Find the decoration in this photo and tell us what room it is in!', 'living room', 'Look at the background carefully', 'There is a sofa visible', 'The Christmas tree is here', 100, 25, 25, 25),
+(4, 'text', 'Where water falls and hands get clean, the next clue waits to be seen. Check behind the mirror door, a festive surprise is in store!', 'bathroom', 'You wash your hands here', 'There is a sink', 'Check the medicine cabinet', 100, 20, 20, 20),
+(5, 'music', 'Listen to this Christmas tune and name the song!', 'jingle bells', 'It mentions a one-horse sleigh', 'Everyone knows this carol', 'The title rhymes with "single smells"', 100, 25, 25, 25),
+(6, 'text', 'Where dreams are made and pillows lay, your final treasure waits today! Check under the place where you rest your head, the treasure hunt prize is waiting in bed!', 'bedroom', 'You sleep here', 'Look under something soft', 'Check under the pillow!', 100, 20, 20, 20);
