@@ -43,3 +43,14 @@ export interface LeaderboardEntry {
   completed_at: string | null
   questions_answered: number
 }
+
+export interface Player {
+  id: string
+  name: string
+  team_id: string | null
+  created_at: string
+}
+
+export interface TeamWithPlayers extends Team {
+  players: string[]
+}

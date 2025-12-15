@@ -13,7 +13,7 @@ export default function Home() {
       <div className="container mx-auto px-4 py-8 relative z-10">
         <FestiveHeader title="Christmas Quiz" subtitle="Answer the questions, solve the clues, win the prize!" />
 
-        <p className="text-center text-muted-foreground text-sm mb-4">v1.0.1</p>
+        <p className="text-center text-muted-foreground text-sm mb-4">v1.0.2</p>
 
         <div className="max-w-md mx-auto space-y-6">
           <TeamForm />
@@ -29,6 +29,15 @@ export default function Home() {
               <Button variant="outline" className="w-full border-border hover:bg-muted bg-transparent">
                 <Settings className="h-4 w-4 mr-2" />
                 Admin
+              </Button>
+            </Link>
+          </div>
+
+          <div className="text-center pt-4 border-t border-border">
+            <p className="text-sm text-muted-foreground mb-2">Or sign up as an individual player</p>
+            <Link href="/players">
+              <Button variant="secondary" className="w-full">
+                Player Sign-Up
               </Button>
             </Link>
           </div>

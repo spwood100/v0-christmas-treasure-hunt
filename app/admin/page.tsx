@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/client"
-import type { Question, Team } from "@/lib/types"
+import type { Question, Team, Player } from "@/lib/types"
 import {
   Plus,
   Trash2,
@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [teams, setTeams] = useState<Team[]>([])
+  const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set())
@@ -72,13 +73,15 @@ export default function AdminPage() {
 
   const loadData = async () => {
     setLoading(true)
-    const [questionsRes, teamsRes] = await Promise.all([
+    const [questionsRes, teamsRes, playersRes] = await Promise.all([
       supabase.from("questions").select("*").order("question_order", { ascending: true }),
       supabase.from("teams").select("*").order("created_at", { ascending: true }),
+      supabase.from("players").select("*").order("created_at", { ascending: true }),
     ])
 
     setQuestions(questionsRes.data || [])
     setTeams(teamsRes.data || [])
+    setPlayers(playersRes.data || [])
     setLoading(false)
   }
 
@@ -145,6 +148,50 @@ export default function AdminPage() {
     if (!confirm("Are you sure you want to delete ALL questions? This cannot be undone.")) return
 
     await supabase.from("questions").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+    loadData()
+  }
+
+  const handleRandomlyAssignPlayers = async () => {
+    const unassignedPlayers = players.filter((p) => !p.team_id)
+    if (unassignedPlayers.length === 0) {
+      alert("No unassigned players to assign!")
+      return
+    }
+
+    if (teams.length === 0) {
+      alert("No teams exist! Create teams first.")
+      return
+    }
+
+    if (
+      !confirm(
+        `Randomly assign ${unassignedPlayers.length} players across ${teams.length} teams? This will distribute players evenly.`,
+      )
+    )
+      return
+
+    const shuffled = [...unassignedPlayers].sort(() => Math.random() - 0.5)
+
+    for (let i = 0; i < shuffled.length; i++) {
+      const player = shuffled[i]
+      const team = teams[i % teams.length]
+
+      await supabase.from("players").update({ team_id: team.id }).eq("id", player.id)
+    }
+
+    loadData()
+    alert("Players assigned successfully!")
+  }
+
+  const handleDeletePlayer = async (id: string) => {
+    if (!confirm("Delete this player?")) return
+
+    await supabase.from("players").delete().eq("id", id)
+    loadData()
+  }
+
+  const handleUnassignPlayer = async (id: string) => {
+    await supabase.from("players").update({ team_id: null }).eq("id", id)
     loadData()
   }
 
@@ -215,11 +262,11 @@ export default function AdminPage() {
           </Button>
         </div>
 
-        <FestiveHeader title="Admin Panel" subtitle="Manage questions and teams" />
+        <FestiveHeader title="Admin Panel" subtitle="Manage questions, teams, and players" />
 
         <div className="max-w-4xl mx-auto">
           <Tabs defaultValue="questions">
-            <TabsList className="grid w-full grid-cols-2 bg-muted mb-6">
+            <TabsList className="grid w-full grid-cols-3 bg-muted mb-6">
               <TabsTrigger
                 value="questions"
                 className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -231,6 +278,12 @@ export default function AdminPage() {
                 className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
               >
                 Teams ({teams.length})
+              </TabsTrigger>
+              <TabsTrigger
+                value="players"
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                Players ({players.length})
               </TabsTrigger>
             </TabsList>
 
@@ -536,6 +589,78 @@ export default function AdminPage() {
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            <TabsContent value="players" className="space-y-4">
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <CardTitle className="font-serif">Player Management</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Unassigned Players: {players.filter((p) => !p.team_id).length}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Assigned Players: {players.filter((p) => p.team_id).length}
+                      </p>
+                    </div>
+                    <Button onClick={handleRandomlyAssignPlayers} className="bg-accent text-accent-foreground">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Randomly Assign All Unassigned
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground">All Players</h3>
+                    {players.length === 0 && (
+                      <Card className="bg-card border-border">
+                        <CardContent className="p-8 text-center">
+                          <p className="text-muted-foreground">No players have signed up yet.</p>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {players.map((player) => {
+                      const team = teams.find((t) => t.id === player.team_id)
+                      return (
+                        <Card key={player.id} className="bg-card border-border">
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-foreground">{player.name}</p>
+                                {team ? (
+                                  <p className="text-sm text-muted-foreground">Team: {team.name}</p>
+                                ) : (
+                                  <Badge variant="secondary" className="bg-yellow-600 text-yellow-50 mt-1">
+                                    Unassigned
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex gap-2">
+                                {player.team_id && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleUnassignPlayer(player.id)}
+                                    className="border-border bg-transparent"
+                                  >
+                                    Unassign
+                                  </Button>
+                                )}
+                                <Button variant="destructive" size="sm" onClick={() => handleDeletePlayer(player.id)}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </div>
