@@ -198,11 +198,12 @@ export default function PlayPage() {
               subtitle="Solve this riddle to find your next clue!"
             />
             <QuestionCard
-              question={currentQuestion}
-              questionNumber={team.current_question_index + 1}
-              totalQuestions={questions.length}
-              onCorrectAnswer={handleCorrectAnswer}
-            />
+  key={currentQuestion?.id}
+  question={currentQuestion}
+  questionNumber={team.current_question_index + 1}
+  totalQuestions={questions.length}
+  onCorrectAnswer={handleCorrectAnswer}
+/>
           </div>
         )}
       </div>

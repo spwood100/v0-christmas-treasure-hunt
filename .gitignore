@@ -1,0 +1,10 @@
+
+# local env
+.env.local
+# next build output
+.next/
+# deps
+node_modules/
+# next
+next-env.d.ts
+
