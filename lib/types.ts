@@ -14,6 +14,7 @@ export interface Question {
   round_type: "text" | "photo" | "music"
   clue: string
   answer: string
+  answer_mode: "freetext" | "mcq" | "typeahead"
   hint_1: string | null
   hint_2: string | null
   hint_3: string | null
@@ -53,4 +54,31 @@ export interface Player {
 
 export interface TeamWithPlayers extends Team {
   players: string[]
+}
+
+export interface QuestionOption {
+  id: string
+  question_id: string
+  label: string
+  normalized_label: string
+  is_correct: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface PlayerAnswer {
+  id: string
+  player_id: string | null
+  team_id: string
+  question_id: string
+  selected_option_id: string | null
+  free_text_answer: string | null
+  is_correct: boolean
+  points_awarded: number
+  hints_used: number
+  submitted_at: string
+}
+
+export interface QuestionWithOptions extends Question {
+  options: QuestionOption[]
 }

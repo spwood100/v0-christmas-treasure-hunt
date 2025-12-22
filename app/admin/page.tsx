@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/client"
-import type { Question, Team, Player } from "@/lib/types"
+import type { Team, Player, QuestionWithOptions, QuestionOption } from "@/lib/types"
 import {
   Plus,
   Trash2,
@@ -34,10 +34,11 @@ import { XmlUpload } from "@/components/xml-upload"
 import { PhotoUpload } from "@/components/photo-upload"
 import { AudioUpload } from "@/components/audio-upload"
 import { AdminLogin } from "@/components/admin-login"
+import { OptionManager } from "@/components/option-manager"
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [questions, setQuestions] = useState<Question[]>([])
+  const [questions, setQuestions] = useState<QuestionWithOptions[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,6 +48,7 @@ export default function AdminPage() {
 
   const [newQuestion, setNewQuestion] = useState({
     round_type: "text" as "text" | "photo" | "music",
+    answer_mode: "freetext" as "freetext" | "mcq" | "typeahead",
     clue: "",
     answer: "",
     hint_1: "",
@@ -58,6 +60,7 @@ export default function AdminPage() {
     hint_3_penalty: 20,
     image_url: "",
     audio_url: "",
+    options: [] as Omit<QuestionOption, "id" | "question_id" | "created_at">[],
   })
 
   useEffect(() => {
@@ -73,8 +76,16 @@ export default function AdminPage() {
 
   const loadData = async () => {
     setLoading(true)
-    const [questionsRes, teamsRes, playersRes] = await Promise.all([
-      supabase.from("questions").select("*").order("question_order", { ascending: true }),
+
+    const questionsRes = await supabase
+      .from("questions")
+      .select(`
+        *,
+        options:question_options(*)
+      `)
+      .order("question_order", { ascending: true })
+
+    const [teamsRes, playersRes] = await Promise.all([
       supabase.from("teams").select("*").order("created_at", { ascending: true }),
       supabase.from("players").select("*").order("created_at", { ascending: true }),
     ])
@@ -92,18 +103,64 @@ export default function AdminPage() {
 
   const handleAddQuestion = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (newQuestion.answer_mode !== "freetext") {
+      if (newQuestion.options.length < 2) {
+        alert("Please add at least 2 options")
+        return
+      }
+      if (newQuestion.options.filter((opt) => opt.is_correct).length !== 1) {
+        alert("Please mark exactly one option as correct")
+        return
+      }
+      if (newQuestion.options.some((opt) => !opt.label.trim())) {
+        alert("All options must have a label")
+        return
+      }
+    }
+
     setSaving(true)
 
     const questionOrder = questions.length + 1
 
-    const { error } = await supabase.from("questions").insert({
-      ...newQuestion,
-      question_order: questionOrder,
-    })
+    const { data: questionData, error: questionError } = await supabase
+      .from("questions")
+      .insert({
+        round_type: newQuestion.round_type,
+        answer_mode: newQuestion.answer_mode,
+        clue: newQuestion.clue,
+        answer: newQuestion.answer,
+        hint_1: newQuestion.hint_1,
+        hint_2: newQuestion.hint_2,
+        hint_3: newQuestion.hint_3,
+        max_points: newQuestion.max_points,
+        hint_1_penalty: newQuestion.hint_1_penalty,
+        hint_2_penalty: newQuestion.hint_2_penalty,
+        hint_3_penalty: newQuestion.hint_3_penalty,
+        image_url: newQuestion.image_url,
+        audio_url: newQuestion.audio_url,
+        question_order: questionOrder,
+      })
+      .select()
+      .single()
 
-    if (!error) {
+    if (!questionError && questionData && newQuestion.answer_mode !== "freetext") {
+      // Insert options
+      const optionsToInsert = newQuestion.options.map((opt) => ({
+        question_id: questionData.id,
+        label: opt.label,
+        normalized_label: opt.normalized_label,
+        is_correct: opt.is_correct,
+        sort_order: opt.sort_order,
+      }))
+
+      await supabase.from("question_options").insert(optionsToInsert)
+    }
+
+    if (!questionError) {
       setNewQuestion({
         round_type: "text",
+        answer_mode: "freetext",
         clue: "",
         answer: "",
         hint_1: "",
@@ -115,6 +172,7 @@ export default function AdminPage() {
         hint_3_penalty: 20,
         image_url: "",
         audio_url: "",
+        options: [],
       })
       loadData()
     }
@@ -329,6 +387,29 @@ export default function AdminPage() {
                       </div>
 
                       <div className="space-y-2">
+                        <Label>Answer Mode</Label>
+                        <Select
+                          value={newQuestion.answer_mode}
+                          onValueChange={(value: "freetext" | "mcq" | "typeahead") =>
+                            setNewQuestion({
+                              ...newQuestion,
+                              answer_mode: value,
+                              options: value === "freetext" ? [] : newQuestion.options,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="bg-input border-border">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="freetext">Free Text</SelectItem>
+                            <SelectItem value="mcq">Multiple Choice</SelectItem>
+                            <SelectItem value="typeahead">Typeahead Select</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
                         <Label>Max Points</Label>
                         <Input
                           type="number"
@@ -352,16 +433,25 @@ export default function AdminPage() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Answer (case-insensitive)</Label>
-                      <Input
-                        placeholder="The correct answer"
-                        value={newQuestion.answer}
-                        onChange={(e) => setNewQuestion({ ...newQuestion, answer: e.target.value })}
-                        required
-                        className="bg-input border-border"
+                    {newQuestion.answer_mode === "freetext" && (
+                      <div className="space-y-2">
+                        <Label>Answer (case-insensitive)</Label>
+                        <Input
+                          placeholder="The correct answer"
+                          value={newQuestion.answer}
+                          onChange={(e) => setNewQuestion({ ...newQuestion, answer: e.target.value })}
+                          required
+                          className="bg-input border-border"
+                        />
+                      </div>
+                    )}
+
+                    {newQuestion.answer_mode !== "freetext" && (
+                      <OptionManager
+                        options={newQuestion.options}
+                        onChange={(options) => setNewQuestion({ ...newQuestion, options })}
                       />
-                    </div>
+                    )}
 
                     {newQuestion.round_type === "photo" && (
                       <PhotoUpload

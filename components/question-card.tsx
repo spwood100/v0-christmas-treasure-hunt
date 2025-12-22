@@ -7,23 +7,30 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import type { Question } from "@/lib/types"
-import { Lightbulb, Check, X, Camera, Music, FileText, Star } from "lucide-react"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Label } from "@/components/ui/label"
+import type { QuestionWithOptions } from "@/lib/types"
+import { Lightbulb, Check, X, Camera, Music, FileText, Star, Search } from "lucide-react"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface QuestionCardProps {
-  question: Question
+  question: QuestionWithOptions
   questionNumber: number
   totalQuestions: number
-  onCorrectAnswer: (hintsUsed: number, points: number, timeTaken: number) => void
+  onCorrectAnswer: (hintsUsed: number, points: number, timeTaken: number, selectedOptionId?: string) => void
 }
 
 export function QuestionCard({ question, questionNumber, totalQuestions, onCorrectAnswer }: QuestionCardProps) {
   const [answer, setAnswer] = useState("")
+  const [selectedOptionId, setSelectedOptionId] = useState<string>("")
   const [hintsUsed, setHintsUsed] = useState(0)
   const [showHints, setShowHints] = useState<string[]>([])
   const [feedback, setFeedback] = useState<"correct" | "incorrect" | null>(null)
   const [startTime] = useState(Date.now())
   const [currentPoints, setCurrentPoints] = useState(question.max_points)
+  const [open, setOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState("")
 
   useEffect(() => {
     // Calculate current points based on hints used
@@ -44,14 +51,27 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const normalizedAnswer = answer.toLowerCase().trim()
-    const correctAnswer = question.answer.toLowerCase().trim()
 
-    if (normalizedAnswer === correctAnswer) {
+    let isCorrect = false
+    let optionId: string | undefined
+
+    if (question.answer_mode === "freetext") {
+      // Original free-text logic
+      const normalizedAnswer = answer.toLowerCase().trim()
+      const correctAnswer = question.answer.toLowerCase().trim()
+      isCorrect = normalizedAnswer === correctAnswer
+    } else {
+      // MCQ or typeahead - check selected option
+      const selectedOption = question.options?.find((opt) => opt.id === selectedOptionId)
+      isCorrect = selectedOption?.is_correct || false
+      optionId = selectedOptionId
+    }
+
+    if (isCorrect) {
       setFeedback("correct")
       const timeTaken = Math.floor((Date.now() - startTime) / 1000)
       setTimeout(() => {
-        onCorrectAnswer(hintsUsed, currentPoints, timeTaken)
+        onCorrectAnswer(hintsUsed, currentPoints, timeTaken, optionId)
       }, 1500)
     } else {
       setFeedback("incorrect")
@@ -82,6 +102,8 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
   }
 
   const availableHints = [question.hint_1, question.hint_2, question.hint_3].filter(Boolean).length
+
+  const selectedOption = question.options?.find((opt) => opt.id === selectedOptionId)
 
   return (
     <Card
@@ -148,23 +170,91 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
           >
             <Lightbulb className="h-4 w-4 mr-2" />
             Reveal Hint ({availableHints - hintsUsed} remaining, -
-            {question[`hint_${hintsUsed + 1}_penalty` as keyof Question]} points)
+            {question[`hint_${hintsUsed + 1}_penalty` as keyof QuestionWithOptions]} points)
           </Button>
         )}
 
         {/* Answer form */}
         <form onSubmit={handleSubmit} className="space-y-3">
-          <Input
-            placeholder="Type your answer here..."
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            className="bg-input border-border text-lg"
-            disabled={feedback === "correct"}
-          />
+          {question.answer_mode === "freetext" && (
+            <Input
+              placeholder="Type your answer here..."
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              className="bg-input border-border text-lg"
+              disabled={feedback === "correct"}
+            />
+          )}
+
+          {question.answer_mode === "mcq" && (
+            <RadioGroup value={selectedOptionId} onValueChange={setSelectedOptionId} disabled={feedback === "correct"}>
+              <div className="space-y-2">
+                {question.options
+                  ?.sort((a, b) => a.sort_order - b.sort_order)
+                  .map((option) => (
+                    <div
+                      key={option.id}
+                      className="flex items-center space-x-2 p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <RadioGroupItem value={option.id} id={option.id} />
+                      <Label htmlFor={option.id} className="flex-1 cursor-pointer text-base">
+                        {option.label}
+                      </Label>
+                    </div>
+                  ))}
+              </div>
+            </RadioGroup>
+          )}
+
+          {question.answer_mode === "typeahead" && (
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={open}
+                  className="w-full justify-between bg-input border-border text-lg h-12"
+                  disabled={feedback === "correct"}
+                >
+                  {selectedOption ? selectedOption.label : "Select answer..."}
+                  <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Type to search..." value={searchValue} onValueChange={setSearchValue} />
+                  <CommandList>
+                    <CommandEmpty>No answer found.</CommandEmpty>
+                    <CommandGroup>
+                      {question.options
+                        ?.filter((opt) => opt.normalized_label.includes(searchValue.toLowerCase()))
+                        .map((option) => (
+                          <CommandItem
+                            key={option.id}
+                            value={option.id}
+                            onSelect={(value) => {
+                              setSelectedOptionId(value)
+                              setOpen(false)
+                            }}
+                          >
+                            {option.label}
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          )}
+
           <Button
             type="submit"
             className="w-full bg-primary hover:bg-primary/90 text-lg py-6"
-            disabled={!answer.trim() || feedback === "correct"}
+            disabled={
+              (question.answer_mode === "freetext" && !answer.trim()) ||
+              (question.answer_mode !== "freetext" && !selectedOptionId) ||
+              feedback === "correct"
+            }
           >
             {feedback === "correct" ? (
               <>

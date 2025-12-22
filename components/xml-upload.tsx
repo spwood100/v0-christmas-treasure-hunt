@@ -12,6 +12,7 @@ import { Upload, FileCode, CheckCircle, AlertCircle, Download } from "lucide-rea
 
 interface ParsedQuestion {
   round_type: "text" | "photo" | "music"
+  answer_mode: "freetext" | "mcq" | "typeahead"
   clue: string
   answer: string
   hint_1: string
@@ -24,6 +25,12 @@ interface ParsedQuestion {
   image_url: string
   audio_url: string
   question_order: number
+  options?: Array<{
+    label: string
+    normalized_label: string
+    is_correct: boolean
+    sort_order: number
+  }>
 }
 
 interface XmlUploadProps {
@@ -68,9 +75,27 @@ export function XmlUpload({ onSuccess, existingCount }: XmlUploadProps) {
       }
 
       const roundType = getText(["type"]) as "text" | "photo" | "music"
+      const answerMode = getText(["answerMode", "answer_mode"]) as "freetext" | "mcq" | "typeahead"
+
+      const optionNodes = node.querySelectorAll("option")
+      const options: ParsedQuestion["options"] = []
+
+      if (optionNodes.length > 0) {
+        optionNodes.forEach((optNode, optIndex) => {
+          const label = optNode.textContent?.trim() || ""
+          const isCorrect = optNode.getAttribute("correct") === "true"
+          options.push({
+            label,
+            normalized_label: label.toLowerCase().trim(),
+            is_correct: isCorrect,
+            sort_order: optIndex,
+          })
+        })
+      }
 
       questions.push({
         round_type: ["text", "photo", "music"].includes(roundType) ? roundType : "text",
+        answer_mode: ["freetext", "mcq", "typeahead"].includes(answerMode) ? answerMode : "freetext",
         clue: getText(["clue", "text"]),
         answer: getText(["answer"]),
         hint_1: getText(["hint1", "clue1"]),
@@ -83,6 +108,7 @@ export function XmlUpload({ onSuccess, existingCount }: XmlUploadProps) {
         image_url: getText(["imageUrl", "image_url", "image"]),
         audio_url: getText(["audioUrl", "audio_url", "audio"]),
         question_order: startOrder + index + 1,
+        options: options.length > 0 ? options : undefined,
       })
     })
 
@@ -108,6 +134,15 @@ export function XmlUpload({ onSuccess, existingCount }: XmlUploadProps) {
         if (!questions[i].clue || !questions[i].answer) {
           throw new Error(`Question ${i + 1} is missing clue or answer`)
         }
+        if (questions[i].answer_mode !== "freetext") {
+          if (!questions[i].options || questions[i].options!.length < 2) {
+            throw new Error(`Question ${i + 1} must have at least 2 options for ${questions[i].answer_mode} mode`)
+          }
+          const correctCount = questions[i].options!.filter((opt) => opt.is_correct).length
+          if (correctCount !== 1) {
+            throw new Error(`Question ${i + 1} must have exactly 1 correct option (found ${correctCount})`)
+          }
+        }
       }
 
       if (replaceExisting) {
@@ -118,9 +153,28 @@ export function XmlUpload({ onSuccess, existingCount }: XmlUploadProps) {
         if (deleteError) throw deleteError
       }
 
-      const { error } = await supabase.from("questions").insert(questions)
+      for (const question of questions) {
+        const { options, ...questionData } = question
 
-      if (error) throw error
+        const { data: insertedQuestion, error: questionError } = await supabase
+          .from("questions")
+          .insert(questionData)
+          .select()
+          .single()
+
+        if (questionError) throw questionError
+
+        if (options && options.length > 0 && insertedQuestion) {
+          const optionsToInsert = options.map((opt) => ({
+            ...opt,
+            question_id: insertedQuestion.id,
+          }))
+
+          const { error: optionsError } = await supabase.from("question_options").insert(optionsToInsert)
+
+          if (optionsError) throw optionsError
+        }
+      }
 
       setResult({
         success: true,
@@ -145,6 +199,7 @@ export function XmlUpload({ onSuccess, existingCount }: XmlUploadProps) {
 <questions>
   <question>
     <type>text</type>
+    <answerMode>freetext</answerMode>
     <clue>I'm cold inside but keep things fresh, open my door to find your next quest!</clue>
     <answer>fridge</answer>
     <hint1>I'm in the kitchen</hint1>
@@ -156,32 +211,41 @@ export function XmlUpload({ onSuccess, existingCount }: XmlUploadProps) {
     <hint3Penalty>20</hint3Penalty>
   </question>
 
-  <question id="1">
-    <text>In English criminal law, what word describes a person's "guilty mind"?</text>
+  <question>
+    <type>text</type>
+    <answerMode>mcq</answerMode>
+    <clue>What is the capital of France?</clue>
+    <answer>Paris</answer>
+    <option correct="false">London</option>
+    <option correct="true">Paris</option>
+    <option correct="false">Berlin</option>
+    <option correct="false">Madrid</option>
+    <hint1>It's in Western Europe</hint1>
+  </question>
+
+  <question>
+    <type>text</type>
+    <answerMode>typeahead</answerMode>
+    <clue>In English criminal law, what word describes a person's "guilty mind"?</clue>
     <answer>Mens rea</answer>
-    <clue1>It's Latin.</clue1>
-    <clue2>Opposite partner term is "actus reus".</clue2>
-    <clue3>The phrase is "mens rea".</clue3>
+    <option correct="false">Actus reus</option>
+    <option correct="true">Mens rea</option>
+    <option correct="false">Habeas corpus</option>
+    <option correct="false">Caveat emptor</option>
+    <hint1>It's Latin.</hint1>
+    <hint2>Opposite partner term is "actus reus".</hint2>
   </question>
 
   <question>
     <type>photo</type>
+    <answerMode>mcq</answerMode>
     <clue>What location is shown in this photo?</clue>
     <answer>fireplace</answer>
     <imageUrl>https://example.com/fireplace-clue.jpg</imageUrl>
+    <option correct="false">Kitchen</option>
+    <option correct="true">Fireplace</option>
+    <option correct="false">Bedroom</option>
     <hint1>It's warm here</hint1>
-    <hint2>Santa comes down here</hint2>
-    <hint3>It's in the living room</hint3>
-  </question>
-
-  <question>
-    <type>music</type>
-    <clue>Listen to this sound - where would you hear it?</clue>
-    <answer>bathroom</answer>
-    <audioUrl>https://example.com/water-running.mp3</audioUrl>
-    <hint1>Water is involved</hint1>
-    <hint2>You use it every day</hint2>
-    <hint3>There's a shower here</hint3>
   </question>
 </questions>`
 

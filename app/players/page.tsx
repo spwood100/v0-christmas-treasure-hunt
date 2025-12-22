@@ -42,6 +42,8 @@ export default function PlayersPage() {
     setLoading(true)
 
     try {
+      console.log("[v0] Attempting to insert player:", playerName.trim())
+
       // Insert player
       const { data: player, error: playerError } = await supabase
         .from("players")
@@ -49,14 +51,17 @@ export default function PlayersPage() {
         .select()
         .single()
 
+      console.log("[v0] Insert result:", { player, playerError })
+
       if (playerError) throw playerError
 
       setPlayerName("")
       await loadPlayers()
       alert(`Welcome ${player.name}! Wait for the organizer to assign teams.`)
     } catch (error) {
-      alert("Failed to sign up. Please try again.")
-      console.error(error)
+      console.error("[v0] Sign up error:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to sign up. Please try again."
+      alert(errorMessage)
     } finally {
       setLoading(false)
     }

@@ -9,13 +9,13 @@ import { CompletionScreen } from "@/components/completion-screen"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
-import type { Question, Team, TeamProgress } from "@/lib/types"
+import type { QuestionWithOptions, Team, TeamProgress } from "@/lib/types"
 import { LogOut, Star, HelpCircle } from "lucide-react"
 import Link from "next/link"
 
 export default function PlayPage() {
   const [team, setTeam] = useState<Team | null>(null)
-  const [questions, setQuestions] = useState<Question[]>([])
+  const [questions, setQuestions] = useState<QuestionWithOptions[]>([])
   const [progress, setProgress] = useState<TeamProgress[]>([])
   const [loading, setLoading] = useState(true)
   const [totalTime, setTotalTime] = useState(0)
@@ -30,7 +30,6 @@ export default function PlayPage() {
     }
 
     const loadGameData = async () => {
-      // Fetch team data
       const { data: teamData } = await supabase.from("teams").select("*").eq("id", teamId).single()
 
       if (!teamData) {
@@ -42,20 +41,20 @@ export default function PlayPage() {
 
       setTeam(teamData)
 
-      // Fetch questions
       const { data: questionsData } = await supabase
         .from("questions")
-        .select("*")
+        .select(`
+          *,
+          options:question_options(*)
+        `)
         .order("question_order", { ascending: true })
 
       setQuestions(questionsData || [])
 
-      // Fetch team progress
       const { data: progressData } = await supabase.from("team_progress").select("*").eq("team_id", teamId)
 
       setProgress(progressData || [])
 
-      // Calculate total time
       if (progressData) {
         const time = progressData.reduce((acc, p) => acc + (p.time_taken_seconds || 0), 0)
         setTotalTime(time)
@@ -67,12 +66,16 @@ export default function PlayPage() {
     loadGameData()
   }, [router, supabase])
 
-  const handleCorrectAnswer = async (hintsUsed: number, points: number, timeTaken: number) => {
+  const handleCorrectAnswer = async (
+    hintsUsed: number,
+    points: number,
+    timeTaken: number,
+    selectedOptionId?: string,
+  ) => {
     if (!team || !questions.length) return
 
     const currentQuestion = questions[team.current_question_index]
 
-    // Save progress
     await supabase.from("team_progress").insert({
       team_id: team.id,
       question_id: currentQuestion.id,
@@ -81,11 +84,20 @@ export default function PlayPage() {
       time_taken_seconds: timeTaken,
     })
 
+    await supabase.from("player_answers").insert({
+      team_id: team.id,
+      question_id: currentQuestion.id,
+      selected_option_id: selectedOptionId || null,
+      free_text_answer: selectedOptionId ? null : currentQuestion.answer,
+      is_correct: true,
+      points_awarded: points,
+      hints_used: hintsUsed,
+    })
+
     const newScore = team.total_score + points
     const newIndex = team.current_question_index + 1
     const isComplete = newIndex >= questions.length
 
-    // Update team
     await supabase
       .from("teams")
       .update({
@@ -145,7 +157,6 @@ export default function PlayPage() {
       <Snowfall />
 
       <div className="container mx-auto px-4 py-8 relative z-10">
-        {/* Team info header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 bg-primary rounded-full flex items-center justify-center">
