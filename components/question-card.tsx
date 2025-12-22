@@ -75,7 +75,10 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
       }, 1500)
     } else {
       setFeedback("incorrect")
-      setTimeout(() => setFeedback(null), 1500)
+      const timeTaken = Math.floor((Date.now() - startTime) / 1000)
+      setTimeout(() => {
+        onCorrectAnswer(hintsUsed, 0, timeTaken, optionId)
+      }, 1500)
     }
   }
 
@@ -182,12 +185,12 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
               className="bg-input border-border text-lg"
-              disabled={feedback === "correct"}
+              disabled={feedback !== null}
             />
           )}
 
           {question.answer_mode === "mcq" && (
-            <RadioGroup value={selectedOptionId} onValueChange={setSelectedOptionId} disabled={feedback === "correct"}>
+            <RadioGroup value={selectedOptionId} onValueChange={setSelectedOptionId} disabled={feedback !== null}>
               <div className="space-y-2">
                 {question.options
                   ?.sort((a, b) => a.sort_order - b.sort_order)
@@ -214,7 +217,7 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
                   role="combobox"
                   aria-expanded={open}
                   className="w-full justify-between bg-input border-border text-lg h-12"
-                  disabled={feedback === "correct"}
+                  disabled={feedback !== null}
                 >
                   {selectedOption ? selectedOption.label : "Select answer..."}
                   <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -253,7 +256,7 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
             disabled={
               (question.answer_mode === "freetext" && !answer.trim()) ||
               (question.answer_mode !== "freetext" && !selectedOptionId) ||
-              feedback === "correct"
+              feedback !== null
             }
           >
             {feedback === "correct" ? (
@@ -264,7 +267,7 @@ export function QuestionCard({ question, questionNumber, totalQuestions, onCorre
             ) : feedback === "incorrect" ? (
               <>
                 <X className="h-5 w-5 mr-2" />
-                Try again!
+                Incorrect - Moving on...
               </>
             ) : (
               "Submit Answer"
